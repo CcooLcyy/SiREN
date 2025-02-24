@@ -1,0 +1,61 @@
+#[=============================================================================[
+# usage: 
+1. First turn on the switch of 'ENABLE_TEST', which can help you to include the 
+module of test.
+2. set the test framework you want to use, you can choose the framework from
+'GTest' to 'BoostTest'.
+3. After you choose the test framework, you have to find the path of test source
+directory. set the variable 'TEST_SOURCE_DIR'.
+#]=============================================================================]
+
+message(STATUS "=== begin test.cmake ==========================================================>")
+if(ENABLE_TEST) 
+    enable_testing()
+    set(notice_message "set a unit test framework from <GTest, BoostTest> to var TEST_FRAMEWORK")
+    message(STATUS ${notice_message})
+    if(TEST_FRAMEWORK)
+        if(TEST_FRAMEWORK STREQUAL "GTest")
+            message(STATUS "unit test framework: ${TEST_FRAMEWORK}")
+            find_package(GTest CONFIG REQUIRED)
+        elseif(TEST_FRAMEWORK STREQUAL "BoostTest")
+            message(STATUS "unit test framework: ${TEST_FRAMEWORK}")
+            message(FATAL_ERROR "We still not config Boost Test yet, it's will coming soom.
+            You can modify this lib for your utlity, also pull request are welcomed.")
+        endif()
+    else()
+        message(FATAL_ERROR "NOT choose a unit test framework")
+    endif()
+    
+    message(STATUS "Testing enabled")
+    set(TEST_SOURCE_DIR CACHE PATH "Path to unit test source dir")
+    aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/../test test_src_dir)
+    foreach(test_src_file ${test_src_dir})
+        get_filename_component(test_name ${test_src_file} NAME_WE)
+        message(STATUS "unit test file: ${test_src_file}")
+        add_executable(test${test_name} ${test_src_file})
+        if(${TEST_FRAMEWORK} STREQUAL "GTest")
+            target_link_libraries(test${test_name} PUBLIC GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
+            # set_target_properties(test${test_name} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test)
+            add_test(NAME test${test_name} COMMAND test${test_name})
+        elseif(${TEST_FRAMEWORK} STREQUAL "BoostTest")
+        endif()
+    endforeach()
+    
+    # coverage report support
+    if(ENABLE_COVERAGE)
+        message(STATUS "Coverage enabled")
+        add_compile_options(-fprofile-arcs -ftest-coverage)
+        add_link_options(--coverage)
+
+        add_custom_target(coverage
+            COMMAND rm -rf ${CMAKE_SOURCE_DIR}/coverage-report
+            COMMAND ${CMAKE_CTEST_COMMAND}
+            COMMAND lcov --capture --directory . --output-file coverage.info
+            COMMAND lcov --remove coverage.info '/usr/*' '/data/3rdlibs/*' --output-file coverage_filtered.info
+            COMMAND genhtml coverage_filtered.info --output-directory ${CMAKE_SOURCE_DIR}/coverage-report
+        )
+    else()
+        message(STATUS "Coverage disabled")
+    endif()
+endif()
+message(STATUS "<== end test.cmake =============================================================")

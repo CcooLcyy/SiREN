@@ -1,0 +1,2 @@
+target_link_libraries(testBCD PUBLIC siren_utility)
+target_link_libraries(testRandomGen PUBLIC siren_utility)
