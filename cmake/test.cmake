@@ -10,7 +10,6 @@ directory. set the variable 'TEST_SOURCE_DIR'.
 
 message(STATUS "=== begin test.cmake ==========================================================>")
 if(ENABLE_TEST) 
-    enable_testing()
     set(notice_message "set a unit test framework from <GTest, BoostTest> to var TEST_FRAMEWORK")
     message(STATUS ${notice_message})
     if(TEST_FRAMEWORK)
@@ -28,14 +27,15 @@ if(ENABLE_TEST)
     
     message(STATUS "Testing enabled")
     set(TEST_SOURCE_DIR CACHE PATH "Path to unit test source dir")
-    aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/../test test_src_dir)
+    aux_source_directory(${CMAKE_SOURCE_DIR}/src/test test_src_dir)
     foreach(test_src_file ${test_src_dir})
         get_filename_component(test_name ${test_src_file} NAME_WE)
         message(STATUS "unit test file: ${test_src_file}")
         add_executable(test${test_name} ${test_src_file})
+        target_compile_options(test${test_name} PRIVATE -fprofile-arcs -ftest-coverage)
+        target_link_options(test${test_name} PRIVATE --coverage -lgcov)
         if(${TEST_FRAMEWORK} STREQUAL "GTest")
             target_link_libraries(test${test_name} PUBLIC GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
-            # set_target_properties(test${test_name} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/test)
             add_test(NAME test${test_name} COMMAND test${test_name})
         elseif(${TEST_FRAMEWORK} STREQUAL "BoostTest")
         endif()
@@ -44,15 +44,18 @@ if(ENABLE_TEST)
     # coverage report support
     if(ENABLE_COVERAGE)
         message(STATUS "Coverage enabled")
-        add_compile_options(-fprofile-arcs -ftest-coverage)
-        add_link_options(--coverage)
 
         add_custom_target(coverage
             COMMAND rm -rf ${CMAKE_SOURCE_DIR}/coverage-report
-            COMMAND ${CMAKE_CTEST_COMMAND}
-            COMMAND lcov --capture --directory . --output-file coverage.info
-            COMMAND lcov --remove coverage.info '/usr/*' '/data/3rdlibs/*' --output-file coverage_filtered.info
-            COMMAND genhtml coverage_filtered.info --output-directory ${CMAKE_SOURCE_DIR}/coverage-report
+            COMMAND ${CMAKE_COMMAND} --build ${CMAKE_SOURCE_DIR}/build --config Debug --target all -j 18 --
+            COMMAND ${CMAKE_CTEST_COMMAND} --tests-dir ${CMAKE_SOURCE_DIR}/build/cmake
+            # COMMAND cd ${CMAKE_SOURCE_DIR}
+            COMMAND geninfo . -o coverage.info --no-external --keep-going
+            # COMMAND lcov --capture --directory . --output-file coverage.info --no-external
+            # COMMAND lcov --capture --directory . --output-file coverage.info --no-external --ignore-errors mismatch
+            # COMMAND lcov --remove coverage.info '/usr/*' '/data/3rdlibs/*' --output-file coverage_filtered.info
+            # COMMAND genhtml ${CMAKE_SOURCE_DIR}/build/coverage_filtered.info --output-directory ${CMAKE_SOURCE_DIR}/coverage-report
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         )
     else()
         message(STATUS "Coverage disabled")

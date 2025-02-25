@@ -16,7 +16,6 @@ option(ENABLE_TEST "Enable Testing" ON)
 option(ENABLE_COVERAGE "Enable coverage reporting" ON)
 message(STATUS "ENABLE_TEST: ${ENABLE_TEST}")
 message(STATUS "ENABLE_COVERAGE: ${ENABLE_COVERAGE}")
-message(STATUS "ENABLE_FIND_TEST_SOURCE_DIR: ${ENABLE_FIND_TEST_SOURCE_DIR}")
 
 # select a unit test framework from <GTest, BoostTest>
 set(TEST_FRAMEWORK "GTest" CACHE STRING "choose test framework.")

@@ -1,4 +1,5 @@
 #include "utility/RandomGen.h"
+
 #include <gtest/gtest.h>
 
 #include <cstdint>
