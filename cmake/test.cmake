@@ -27,7 +27,7 @@ if(ENABLE_TEST)
     
     message(STATUS "Testing enabled")
     set(TEST_SOURCE_DIR CACHE PATH "Path to unit test source dir")
-    aux_source_directory(${CMAKE_SOURCE_DIR}/src/test test_src_dir)
+    aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/../src/test test_src_dir)
     foreach(test_src_file ${test_src_dir})
         get_filename_component(test_name ${test_src_file} NAME_WE)
         message(STATUS "unit test file: ${test_src_file}")
