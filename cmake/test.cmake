@@ -46,16 +46,17 @@ if(ENABLE_TEST)
         message(STATUS "Coverage enabled")
 
         add_custom_target(coverage
-            COMMAND rm -rf ${CMAKE_SOURCE_DIR}/coverage-report
-            COMMAND ${CMAKE_COMMAND} --build ${CMAKE_SOURCE_DIR}/build --config Debug --target all -j 18 --
-            COMMAND ${CMAKE_CTEST_COMMAND} --tests-dir ${CMAKE_SOURCE_DIR}/build/cmake
+            # COMMAND rm -rf ${CMAKE_SOURCE_DIR}/coverage-report
+            # COMMAND ${CMAKE_COMMAND} --build ${CMAKE_SOURCE_DIR}/build --config Debug --target all -j 18 --
+            # COMMAND ${CMAKE_CTEST_COMMAND} --tests-dir ${CMAKE_SOURCE_DIR}/build/cmake
             # COMMAND cd ${CMAKE_SOURCE_DIR}
-            COMMAND geninfo . -o coverage.info --no-external --keep-going
+            # COMMAND geninfo . -o coverage.info --no-external --keep-going
+            # COMMAND lcov --capture --directory . --output-file coverage.info
             # COMMAND lcov --capture --directory . --output-file coverage.info --no-external
             # COMMAND lcov --capture --directory . --output-file coverage.info --no-external --ignore-errors mismatch
             # COMMAND lcov --remove coverage.info '/usr/*' '/data/3rdlibs/*' --output-file coverage_filtered.info
             # COMMAND genhtml ${CMAKE_SOURCE_DIR}/build/coverage_filtered.info --output-directory ${CMAKE_SOURCE_DIR}/coverage-report
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            # WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         )
     else()
         message(STATUS "Coverage disabled")
