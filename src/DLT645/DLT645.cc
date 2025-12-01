@@ -14,9 +14,12 @@
 #include "CtrlCode.h"
 #include "DLT645.pb.h"
 #include "DLT645Public.h"
+#include "Logger.h"
+#include <fmt/format.h>
 
 siren::DLT645::DLT645(std::string address, std::string dataSheetPath) {
   diSize_ = DI_SIZE;
+  SIREN_LOG_TRACE << "ASkdjasd";
   address_ = address;
   getDataSheet(dataSheetPath);
 }
@@ -29,7 +32,7 @@ Dlt645Proto::DeviceData siren::DLT645::getDeviceData() {
   option.ignore_unknown_fields = true;
   auto status = google::protobuf::util::JsonStringToMessage(jsonContext_, &result, option);
   if (status != absl::OkStatus()) {
-    // Logger::error("dataSheet解析错误: {}", status.ToString());
+    SIREN_LOG_ERROR << fmt::format("dataSheet解析错误: {}", status.ToString());
   }
   result.set_deviceaddress(address_);
   return result;
