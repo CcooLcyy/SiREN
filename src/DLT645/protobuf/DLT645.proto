@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package Dlt645Proto;
+
+message BinList {
+    int64 set = 1;
+    string binName = 2;
+    string binRealName = 3;
+    string binValue = 4;
+    repeated int64 binUnion = 5;
+}
+
+message DataParse {
+    int64 number = 1; //数据点编号
+    string point = 2; //数据点位
+    string name = 3; //数据点名称
+    string realName = 4; //数据点名称
+    int64 dataSize = 5; // 数据尺寸(字节数)
+    double factor = 6; // 小数点位数
+    string encodeType = 7; // 编码方式
+    string dataValue = 8; // 实际数据
+    repeated BinList binList = 9; //bin格式对应位解析列表
+}
+
+message Data {
+    string blockName = 1; // 数据块名称
+    string blockPoint = 2; // 数据点位
+    string blockRealName = 3;// 实际数据名称
+    repeated DataParse dataParse = 4; // 数据解析结构
+};
+
+message DeviceData {
+    string deviceName = 1;
+    string deviceAddress = 2;
+    repeated Data data = 3;
+}
