@@ -269,5 +269,5 @@ std::uint8_t siren::DLT645::fromBCD(std::uint8_t code) {
   std::uint8_t low = code & 0x0F;
   return high * 10 + low;
 }
-// std::string Dlt645::toACSII(std::uint8_t code) {}
-// std::uint8_t Dlt645::fromACSII(std::string ascii) {}
+const std::vector<std::uint8_t> siren::DLT645::extractDlt645Message(std::vector<std::uint8_t> rowData) {
+}
