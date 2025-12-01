@@ -1,1 +1,2 @@
 add_subdirectory(DLT645)
+add_subdirectory(Logger)

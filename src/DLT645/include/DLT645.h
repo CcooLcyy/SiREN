@@ -2,12 +2,13 @@
 
 #include "DLT645.pb.h"
 
-class Dlt645 {
+namespace siren {
+class DLT645 {
 public:
-  Dlt645() = delete;
+  DLT645() = delete;
   // Dlt645(std::string address);
-  Dlt645(std::string address, std::string dataSheetPath);
-  ~Dlt645();
+  DLT645(std::string address, std::string dataSheetPath);
+  ~DLT645();
 
   Dlt645Proto::DeviceData getDeviceData();
 
@@ -30,3 +31,4 @@ private:
   std::string address_;
   // std::string dataSheetPath_;
 };
+}  // namespace siren

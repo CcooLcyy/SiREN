@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+namespace siren {
 namespace CtrlCode {
 enum class FuncCode : std::uint8_t {
   RETAIN = 0x00,            // 保留
@@ -19,3 +20,4 @@ enum class FuncCode : std::uint8_t {
   DATA_FORWARD = 0x1e,      // 数据转发
 };
 }  // namespace CtrlCode
+}  // namespace siren
