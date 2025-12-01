@@ -1,6 +1,7 @@
 #include "DLT645.h"
 
 #include <absl/status/status.h>
+#include <fmt/format.h>
 #include <google/protobuf/json/json.h>
 #include <google/protobuf/util/json_util.h>
 
@@ -15,11 +16,9 @@
 #include "DLT645.pb.h"
 #include "DLT645Public.h"
 #include "Logger.h"
-#include <fmt/format.h>
 
 siren::DLT645::DLT645(std::string address, std::string dataSheetPath) {
   diSize_ = DI_SIZE;
-  SIREN_LOG_TRACE << "ASkdjasd";
   address_ = address;
   getDataSheet(dataSheetPath);
 }
