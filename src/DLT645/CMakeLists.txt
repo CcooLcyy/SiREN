@@ -1,5 +1,5 @@
-aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR} DLT645_SRC)
-aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/protobuf/gen DLT645_PROTOBUF_SRC)
+aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR} SIREN_DLT645_SRC)
+aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR}/protobuf/gen SIREN_DLT645_PROTOBUF_SRC)
 
 execute_process(
     COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/protobuf/genProto.py
@@ -12,26 +12,22 @@ execute_process(
 
 message(STATUS ${PYTHON_OUTPUT})
 
-add_library(siren_dlt645_shared SHARED 
-    ${DLT645_SRC}
-    ${DLT645_PROTOBUF_SRC}
-)
-target_include_directories(siren_dlt645_shared PUBLIC
+if(${SIREN_BUILD_TYPE} STREQUAL "SHARED")
+    add_library(siren_dlt645 SHARED 
+        ${SIREN_DLT645_SRC}
+        ${SIREN_DLT645_PROTOBUF_SRC}
+    )
+elseif(${SIREN_BUILD_TYPE} STREQUAL "STATIC")
+    add_library(siren_dlt645 STATIC 
+        ${SIREN_DLT645_SRC}
+        ${SIREN_DLT645_PROTOBUF_SRC}
+    )
+endif()
+target_include_directories(siren_dlt645 PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/protobuf/gen
 )
-target_link_libraries(siren_dlt645_shared PUBLIC 
+target_link_libraries(siren_dlt645 PUBLIC 
     protobuf::libprotobuf
-)
-
-add_library(siren_dlt645_static STATIC 
-    ${DLT645_SRC}
-    ${DLT645_PROTOBUF_SRC}
-)
-target_include_directories(siren_dlt645_static PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/protobuf/gen
-)
-target_link_libraries(siren_dlt645_static PUBLIC 
-    protobuf::libprotobuf
+    siren_logger
 )
