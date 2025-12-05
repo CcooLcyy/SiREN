@@ -15,7 +15,5 @@ find_package(Boost REQUIRED COMPONENTS log)
 
 include(GoogleTest)
 
-set(BUILD_SHARED_LIBS on)
-
 add_subdirectory(src)
 add_subdirectory(test)
