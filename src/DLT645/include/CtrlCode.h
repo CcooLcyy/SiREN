@@ -3,6 +3,7 @@
 #include <cstdint>
 
 namespace siren {
+namespace dlt645 {
 namespace CtrlCode {
 enum class FuncCode : std::uint8_t {
   RETAIN = 0x00,            // 保留
@@ -19,5 +20,6 @@ enum class FuncCode : std::uint8_t {
   OTA = 0x1d,               // 在线升级
   DATA_FORWARD = 0x1e,      // 数据转发
 };
-}  // namespace CtrlCode
+}
+}  // namespace dlt645
 }  // namespace siren

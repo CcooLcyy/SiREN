@@ -16,13 +16,15 @@
 #include "DLT645Public.h"
 #include "Logger.h"
 
-siren::DLT645::DLT645(std::string address, std::string dataSheetPath) {
+namespace siren {
+namespace dlt645 {
+DLT645::DLT645(std::string address, std::string dataSheetPath) {
   diSize_ = DI_SIZE;
   address_ = address;
   getDataSheet(dataSheetPath);
 }
-siren::DLT645::~DLT645() {}
-Dlt645Proto::DeviceData siren::DLT645::getDeviceData() {
+DLT645::~DLT645() {}
+Dlt645Proto::DeviceData DLT645::getDeviceData() {
   Dlt645Proto::DeviceData result;
   if (address_ == "") {
   }
@@ -35,7 +37,7 @@ Dlt645Proto::DeviceData siren::DLT645::getDeviceData() {
   result.set_deviceaddress(address_);
   return result;
 }
-Dlt645Proto::DeviceData siren::DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> rowData) {
+Dlt645Proto::DeviceData DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> rowData) {
   Dlt645Proto::DeviceData message;
   if (rowData.size() == 0) {
     return message;
@@ -133,7 +135,7 @@ Dlt645Proto::DeviceData siren::DLT645::decodeRecvReadMeter(std::vector<std::uint
   }
   return message;
 }
-void siren::DLT645::getDataSheet(std::string dataSheetPath) {
+void DLT645::getDataSheet(std::string dataSheetPath) {
   std::ifstream dataSheetFile(dataSheetPath);
   if (!dataSheetFile.is_open()) {
     throw std::runtime_error("打开数据解析列表失败");
@@ -141,7 +143,7 @@ void siren::DLT645::getDataSheet(std::string dataSheetPath) {
   jsonContext_ = std::string((std::istreambuf_iterator<char>(dataSheetFile)), std::istreambuf_iterator<char>());
   dataSheetFile.close();
 }
-std::vector<std::uint8_t> siren::DLT645::encodeSendReadMeter(Dlt645Proto::Data data) {
+std::vector<std::uint8_t> DLT645::encodeSendReadMeter(Dlt645Proto::Data data) {
   if (address_ == "") {
   }
   auto dataPointStr = data.blockpoint();
@@ -167,7 +169,7 @@ std::vector<std::uint8_t> siren::DLT645::encodeSendReadMeter(Dlt645Proto::Data d
   result.emplace_back(0x16);
   return result;
 }
-std::vector<std::uint8_t> siren::DLT645::encodeSendWriteMeter(Dlt645Proto::Data data) {
+std::vector<std::uint8_t> DLT645::encodeSendWriteMeter(Dlt645Proto::Data data) {
   if (address_ == "") {
   }
   auto dataPointStr = data.blockpoint();
@@ -216,7 +218,7 @@ std::vector<std::uint8_t> siren::DLT645::encodeSendWriteMeter(Dlt645Proto::Data 
   result.emplace_back(FRAME_END);
   return result;
 }
-std::vector<std::uint8_t> siren::DLT645::encodeSendCtrlMeter(Dlt645Proto::Data data) {
+std::vector<std::uint8_t> DLT645::encodeSendCtrlMeter(Dlt645Proto::Data data) {
   if (address_ == "") {
   }
   std::vector<std::uint8_t> result;
@@ -251,23 +253,25 @@ std::vector<std::uint8_t> siren::DLT645::encodeSendCtrlMeter(Dlt645Proto::Data d
   result.emplace_back(FRAME_END);
   return result;
 }
-std::uint8_t siren::DLT645::encodeCS(const std::vector<std::uint8_t> &buffer) {
+std::uint8_t DLT645::encodeCS(const std::vector<std::uint8_t> &buffer) {
   std::uint8_t result = 0;
   for (auto byte : buffer) {
     result += byte;
   }
   return result & 0xff;
 }
-std::uint8_t siren::DLT645::toBCD(std::uint8_t code) {
+std::uint8_t DLT645::toBCD(std::uint8_t code) {
   std::uint8_t high = code / 10;
   std::uint8_t low = code % 10;
   return (high << 4) | low;
 }
-std::uint8_t siren::DLT645::fromBCD(std::uint8_t code) {
+std::uint8_t DLT645::fromBCD(std::uint8_t code) {
   std::uint8_t high = (code >> 4) & 0x0F;
   std::uint8_t low = code & 0x0F;
   return high * 10 + low;
 }
-const std::vector<std::uint8_t> siren::DLT645::extractDlt645Message(std::vector<std::uint8_t> rowData) {
+const std::vector<std::uint8_t> DLT645::extractDlt645Message(std::vector<std::uint8_t> rowData) {
   return std::vector<std::uint8_t>();
 }
+}  // namespace dlt645
+}  // namespace siren

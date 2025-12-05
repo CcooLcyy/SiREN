@@ -5,6 +5,7 @@
 #include "DLT645.pb.h"
 
 namespace siren {
+namespace dlt645 {
 class DLT645 {
 public:
   DLT645() = delete;
@@ -33,4 +34,5 @@ protected:
   std::string jsonContext_;
   std::string address_;
 };
+}  // namespace dlt645
 }  // namespace siren

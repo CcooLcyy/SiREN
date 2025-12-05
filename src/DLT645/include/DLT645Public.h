@@ -3,6 +3,7 @@
 #include <cstdint>
 
 namespace siren {
+namespace dlt645 {
 const std::uint8_t FRAME_HEAD = 0x68;
 const std::uint8_t FRAME_END = 0x16;
 const std::size_t DI_SIZE = 4;
@@ -56,4 +57,5 @@ enum class DI2 : std::uint8_t {
   SE_Switch = 0x01  // 逆变器开关机控制, DI1: 0x07, DI0: 0x01;
                     /**************************************************************************/
 };
+}  // namespace dlt645
 }  // namespace siren
