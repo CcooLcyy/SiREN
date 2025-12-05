@@ -19,8 +19,8 @@ public:
   std::vector<std::uint8_t> encodeSendWriteMeter(Dlt645Proto::Data data);
   std::vector<std::uint8_t> encodeSendCtrlMeter(Dlt645Proto::Data data);
 
-  // // 提取有效的DLT645报文
-  // const std::vector<std::uint8_t> extractDlt645Message(std::vector<std::uint8_t> rowData);
+  // 提取有效的DLT645报文
+  const std::vector<std::uint8_t> extractDlt645Message(std::vector<std::uint8_t> rowData);
 
 protected:
   void getDataSheet(std::string dataSheetPath);
