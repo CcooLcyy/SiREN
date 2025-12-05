@@ -1,0 +1,12 @@
+{
+  "name": "siren",
+  "version": "0.0.1",
+  "dependencies": [
+    "boost-asio",
+    "boost-json",
+    "boost-log",
+    "gtest",
+    "paho-mqttpp3",
+    "protobuf"
+  ]
+}
