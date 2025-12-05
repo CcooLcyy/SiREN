@@ -12,17 +12,11 @@ execute_process(
 
 message(STATUS ${PYTHON_OUTPUT})
 
-if(${SIREN_BUILD_TYPE} STREQUAL "SHARED")
-    add_library(siren_dlt645 SHARED 
-        ${SIREN_DLT645_SRC}
-        ${SIREN_DLT645_PROTOBUF_SRC}
-    )
-elseif(${SIREN_BUILD_TYPE} STREQUAL "STATIC")
-    add_library(siren_dlt645 STATIC 
-        ${SIREN_DLT645_SRC}
-        ${SIREN_DLT645_PROTOBUF_SRC}
-    )
-endif()
+add_library(siren_dlt645 
+    ${SIREN_DLT645_SRC}
+    ${SIREN_DLT645_PROTOBUF_SRC}
+)
+
 target_include_directories(siren_dlt645 PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/protobuf/gen

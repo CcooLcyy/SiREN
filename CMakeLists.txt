@@ -10,9 +10,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 enable_testing()
 
 find_package(GTest CONFIG REQUIRED)
+find_package(protobuf CONFIG REQUIRED)
 find_package(Boost REQUIRED COMPONENTS log)
 
 include(GoogleTest)
 
+set(BUILD_SHARED_LIBS ON)
 add_subdirectory(src)
 add_subdirectory(test)

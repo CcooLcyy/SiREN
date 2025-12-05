@@ -1,7 +1,6 @@
 #include "DLT645.h"
 
 #include <absl/status/status.h>
-#include <fmt/format.h>
 #include <google/protobuf/json/json.h>
 #include <google/protobuf/util/json_util.h>
 
@@ -31,7 +30,7 @@ Dlt645Proto::DeviceData siren::DLT645::getDeviceData() {
   option.ignore_unknown_fields = true;
   auto status = google::protobuf::util::JsonStringToMessage(jsonContext_, &result, option);
   if (status != absl::OkStatus()) {
-    SIREN_LOG_ERROR << fmt::format("dataSheet解析错误: {}", status.ToString());
+    SIREN_LOG_ERROR << "dataSheet解析错误: " << status.ToString();
   }
   result.set_deviceaddress(address_);
   return result;
