@@ -39,7 +39,7 @@ LoggerInit initializer;
       << boost::log::add_value("Function", __FUNCTION__)
 
 #define SIREN_LOG_INFO                                                                  \
-  BOOST_LOG_STREAM_SEV((boost::log::trivial::logger::get()), boost::log::trivial::INFO) \
+  BOOST_LOG_STREAM_SEV((boost::log::trivial::logger::get()), boost::log::trivial::info) \
       << boost::log::add_value("Line", __LINE__)                                        \
       << boost::log::add_value("File", __FILE__)                                        \
       << boost::log::add_value("Function", __FUNCTION__)
