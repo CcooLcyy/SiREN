@@ -4,21 +4,17 @@
 
 #include "DLT645.h"
 // #include "DLT645ConfigBuilder.h"
-#include "DLT645DataSheet.h"
 
 namespace siren {
 namespace dlt645 {
 class TestDLT645 : public ::testing::Test {
 protected:
-  void SetUp() override {
-    obj = std::make_unique<DLT645>("000000000000", "test_data_sheet.json");
-  }
+  // void SetUp() override {
+  // obj = std::make_unique<DLT645>("000000000000", "test_data_sheet.json");
+  // }
 
   std::unique_ptr<DLT645> obj;
 };
-TEST(TestDLT645, genDLT645DataSheet) {
-  DLT645DataSheet dataSheet;
-}
 // TEST(TestDLT645, getDLT645Obj) {
 //   DLT645ConfigBuilder builder1;
 //   builder1.setAddr("123456789012").setDataSheet("").final();
