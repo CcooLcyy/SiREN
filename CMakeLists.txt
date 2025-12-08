@@ -16,4 +16,6 @@ find_package(Boost REQUIRED COMPONENTS log)
 include(GoogleTest)
 
 add_subdirectory(src)
-add_subdirectory(test)
+if(CMAKE_BUILD_TYPE STREQUAL Debug) 
+    add_subdirectory(test)
+endif()
