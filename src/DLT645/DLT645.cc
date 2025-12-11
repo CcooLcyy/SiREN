@@ -130,6 +130,15 @@ Dlt645Proto::DeviceData DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> ro
           }
           dataParse.set_datavalue(dataValueStr);
         }
+
+        // 处理数据转换的情况（dataTranslate）
+        if (dataParse.datatranslate_size() != 0) {
+          for (auto datatranslate : dataParse.datatranslate()) {
+            if (dataParse.datavalue() == datatranslate.rowdata()) {
+              dataParse.set_datavalue(datatranslate.translatedata());
+            }
+          }
+        }
       }
     }
   }

@@ -3,3 +3,7 @@ build
 
 # clangd
 .cache
+
+# protobuf gen
+**/*.pb.h
+**/*.pb.cc
