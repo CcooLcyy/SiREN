@@ -7,8 +7,12 @@
 #include <boost/json/object.hpp>
 #include <boost/json/parser.hpp>
 #include <boost/json/stream_parser.hpp>
+#include <cctype>
 #include <deque>
 #include <fstream>
+#include <iomanip>
+#include <ios>
+#include <sstream>
 #include <string>
 
 #include "CtrlCode.h"
@@ -100,6 +104,16 @@ Dlt645Proto::DeviceData DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> ro
           if (neg) {
             dataValueStr = "-" + dataValueStr;
           }
+          if (dataParse.datatype() == "int") {
+            dataValueStr = std::stoi(dataValueStr);
+          } else if (dataParse.datatype() == "string") {
+            // 应对BCD编码但是数据类型为string的情况
+            // 针对不以ASCII进行编码的string
+            dataValueStr = std::to_string(std::stoi(dataValueStr));
+            std::ostringstream oss;
+            oss << std::setfill('0') << std::setw(dataParse.datasize() * 2) << dataValueStr;
+            dataValueStr = oss.str();
+          }
           dataParse.set_datavalue(dataValueStr);
         } else if (dataParse.encodetype() == "BIN") {
           auto binValue = std::stoi(realData, nullptr, 16);
@@ -123,7 +137,11 @@ Dlt645Proto::DeviceData DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> ro
         } else if (dataParse.encodetype() == "ASCII") {
           std::deque<char> realDataDeq;
           for (int i = 0; i < realData.size(); i += 2) {
-            realDataDeq.emplace_back(static_cast<char>(std::stoi(realData.substr(i, 2), nullptr, 16)));
+            char c = static_cast<char>(std::stoi(realData.substr(i, 2), nullptr, 16));
+            if (c == 0) {
+              c = ' ';
+            }
+            realDataDeq.emplace_back(c);
           }
           for (auto str : realDataDeq) {
             dataValueStr += str;

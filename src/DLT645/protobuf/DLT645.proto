@@ -3,40 +3,41 @@ syntax = "proto3";
 package Dlt645Proto;
 
 message DataTranslate {
-    string rowData = 1; // 原始数据
-    string translateData = 2; // 转换后数据
+  string rowData       = 1; // 原始数据
+  string translateData = 2; // 转换后数据
 }
 
 message BinList {
-    int64 set = 1;
-    string binName = 2;
-    string binRealName = 3;
-    string binValue = 4;
-    repeated int64 binUnion = 5; // 合点位：如果多个点代表此状态状态时设置
+  int64          set         = 1;
+  string         binName     = 2;
+  string         binRealName = 3;
+  string         binValue    = 4;
+  repeated int64 binUnion    = 5; // 合点位：如果多个点代表此状态状态时设置
 }
 
 message DataParse {
-    int64 number = 1; //数据点编号
-    string point = 2; //数据点位
-    string name = 3; //数据点名称
-    string realName = 4; //数据点名称
-    int64 dataSize = 5; // 数据尺寸(字节数)
-    double factor = 6; // 小数点位数
-    string encodeType = 7; // 编码方式
-    string dataValue = 8; // 实际数据
-    repeated BinList binList = 9; //bin格式对应位解析列表
-    repeated DataTranslate dataTranslate = 10; // 回复不同数据需要进行转换时
+  int64                  number        = 1; // 数据点编号
+  string                 point         = 2; // 数据点位
+  string                 name          = 3; // 数据点名称
+  string                 realName      = 4; // 数据点名称
+  int64                  dataSize      = 5; // 数据尺寸(字节数)
+  double                 factor        = 6; // 小数点位数
+  string                 encodeType    = 7; // 编码方式
+  string                 dataValue     = 8; // 实际数据
+  string                 dataType      = 9; // 数据类型
+  repeated BinList       binList       = 10; // bin格式对应位解析列表
+  repeated DataTranslate dataTranslate = 11; // 回复不同数据需要进行转换时
 }
 
 message Data {
-    string blockName = 1; // 数据块名称
-    string blockPoint = 2; // 数据点位
-    string blockRealName = 3;// 实际数据名称
-    repeated DataParse dataParse = 4; // 数据解析结构
+  string             blockName     = 1; // 数据块名称
+  string             blockPoint    = 2; // 数据点位
+  string             blockRealName = 3;// 实际数据名称
+  repeated DataParse dataParse     = 4; // 数据解析结构
 };
 
 message DeviceData {
-    string deviceName = 1;
-    string deviceAddress = 2;
-    repeated Data data = 3;
+  string        deviceName    = 1;
+  string        deviceAddress = 2;
+  repeated Data data          = 3;
 }
