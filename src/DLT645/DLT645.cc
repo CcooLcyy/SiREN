@@ -293,7 +293,19 @@ std::vector<std::uint8_t> DLT645::encodeSendCtrlMeter(Dlt645Proto::Data data) {
   // 全0表示操作者代码和密码
   std::vector<std::uint8_t> allZero(8, 0x33);
   result.insert(result.end(), allZero.begin(), allZero.end());
-  result.emplace_back(std::stoi(data.dataparse().begin()->datavalue(), nullptr, 16) + 0x33);
+  {
+    // 添加数据
+    auto tmpData = std::stoi(data.dataparse().begin()->datavalue());
+    std::ostringstream oss;
+    oss << std::setw(data.dataparse().begin()->datasize() * 2) << std::setfill('0') << tmpData / data.dataparse().begin()->factor();
+    std::deque<std::string> tmpDeq;
+    for (int i = 0; i != oss.str().size(); i += 2) {
+      tmpDeq.emplace_front(oss.str().substr(i, 2));
+    }
+    for (auto str : tmpDeq) {
+      result.emplace_back(std::stoi(str, nullptr, 16) + 0x33);
+    }
+  }
   result.emplace_back(encodeCS(result));
   result.emplace_back(FRAME_END);
   return result;
