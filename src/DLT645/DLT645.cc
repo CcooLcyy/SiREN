@@ -4,6 +4,7 @@
 #include <google/protobuf/json/json.h>
 #include <google/protobuf/util/json_util.h>
 
+#include <algorithm>
 #include <boost/json/object.hpp>
 #include <boost/json/parser.hpp>
 #include <boost/json/stream_parser.hpp>
@@ -105,7 +106,7 @@ Dlt645Proto::DeviceData DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> ro
             dataValueStr = "-" + dataValueStr;
           }
           if (dataParse.datatype() == "int") {
-            dataValueStr = std::stoi(dataValueStr);
+            dataValueStr = std::to_string(std::stoi(dataValueStr));
           } else if (dataParse.datatype() == "string") {
             // 应对BCD编码但是数据类型为string的情况
             // 针对不以ASCII进行编码的string
@@ -113,6 +114,17 @@ Dlt645Proto::DeviceData DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> ro
             std::ostringstream oss;
             oss << std::setfill('0') << std::setw(dataParse.datasize() * 2) << dataValueStr;
             dataValueStr = oss.str();
+
+            // 当BCD数据类型位string但是dataTranslate位置非空
+            // 表示报文解到的数据需要映射为显示世界的物理量。
+            if (dataParse.datatranslate_size() != 0) {
+              auto dataTranslateIt = std::find_if(dataParse.datatranslate().begin(), dataParse.datatranslate().end(), [&](const auto &elem) {
+                return elem.rowdata() == dataValueStr;
+              });
+              if (dataTranslateIt != dataParse.datatranslate().end()) {
+                dataValueStr = dataTranslateIt->translatedata();
+              }
+            }
           }
           dataParse.set_datavalue(dataValueStr);
         } else if (dataParse.encodetype() == "BIN") {
@@ -132,16 +144,24 @@ Dlt645Proto::DeviceData DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> ro
                 mask |= (1 << unionSet);
               }
             }
-            dataParse.set_datavalue(bin.binvalue());
+            // 如何bin格式数据类型为string，则将被置位的位名设定为对应的值
+            if (dataParse.datatype() == "string") {
+              for (auto bin : dataParse.binlist()) {
+                if (bin.binvalue() == "1") {
+                  dataParse.set_datavalue(bin.binname());
+                }
+              }
+            } else {
+              dataParse.set_datavalue(bin.binvalue());
+            }
           }
         } else if (dataParse.encodetype() == "ASCII") {
           std::deque<char> realDataDeq;
           for (int i = 0; i < realData.size(); i += 2) {
             char c = static_cast<char>(std::stoi(realData.substr(i, 2), nullptr, 16));
-            if (c == 0) {
-              c = ' ';
+            if (c != '\0') {
+              realDataDeq.emplace_back(c);
             }
-            realDataDeq.emplace_back(c);
           }
           for (auto str : realDataDeq) {
             dataValueStr += str;
@@ -231,7 +251,6 @@ std::vector<std::uint8_t> DLT645::encodeSendWriteMeter(Dlt645Proto::Data data) {
     auto tmpData = std::stoi(data.dataparse().begin()->datavalue());
     std::ostringstream oss;
     oss << std::setw(data.dataparse().begin()->datasize() * 2) << std::setfill('0') << tmpData / data.dataparse().begin()->factor();
-    SIREN_LOG_DEBUG << oss.str();
     std::deque<std::string> tmpDeq;
     for (int i = 0; i != oss.str().size(); i += 2) {
       tmpDeq.emplace_front(oss.str().substr(i, 2));
