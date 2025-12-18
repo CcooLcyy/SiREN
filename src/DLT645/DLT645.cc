@@ -199,6 +199,11 @@ std::vector<std::uint8_t> DLT645::encodeSendReadMeter(Dlt645Proto::Data data) {
 std::vector<std::uint8_t> DLT645::encodeSendWriteMeter(Dlt645Proto::Data data) {
   if (address_ == "") {
   }
+  std::vector<std::uint8_t> result;
+  if (data.dataparse_size() != 1) {
+    // Logger::error("dataParse数量错误，不返回任何报文");
+    return result;
+  }
   auto dataPointStr = data.blockpoint();
   std::deque<std::uint8_t> dataPoint;
   for (int i = 0; i != dataPointStr.size(); i += 2) {
@@ -212,33 +217,27 @@ std::vector<std::uint8_t> DLT645::encodeSendWriteMeter(Dlt645Proto::Data data) {
     address.emplace_front(std::stoi(address_.substr(i, 2), nullptr, 16));
   }
   dataSize_ = data.dataparse().begin()->datasize();
-  std::vector<std::uint8_t> result;
   result.emplace_back(0x68);
   result.insert(result.end(), address.begin(), address.end());
   result.emplace_back(0x68);
-  result.emplace_back(0x1c);                     // 主站下发控制
+  result.emplace_back(0x14);                     // 主站下发写数据
   result.emplace_back(diSize_ + dataSize_ + 8);  // 数据长度
   result.insert(result.end(), dataPoint.begin(), dataPoint.end());
-  std::vector<std::uint8_t> allZero(8, 0x33);
   // 全0表示操作者代码和密码
+  std::vector<std::uint8_t> allZero(8, 0x33);
   result.insert(result.end(), allZero.begin(), allZero.end());
   {
-    // 开始编码控制数据
-    auto dataParse = *data.dataparse().begin();
-    auto realValue = std::stod(dataParse.datavalue()) / dataParse.factor();
-    auto valuestring = std::to_string(realValue);
-    std::ostringstream t_oss;
-    t_oss << std::setw(dataParse.datasize() * 2) << std::setfill('0') << valuestring;
-    auto realValueStr = t_oss.str();
-    realValueStr.erase(std::find_if(realValueStr.begin(), realValueStr.end(), [&](auto &elem) { return elem == '.'; }), realValueStr.end());
-    auto addZeroSize = 2 * dataParse.datasize() - realValueStr.size();
-    realValueStr = std::string(addZeroSize, '0') + realValueStr;
-    std::deque<std::uint8_t> dataDeq;
-    for (int i = 0; i != realValueStr.size(); i += 2) {
-      dataDeq.emplace_back(std::stoi(realValueStr.substr(i, 2), nullptr, 16));
+    // 添加数据
+    auto tmpData = std::stoi(data.dataparse().begin()->datavalue());
+    std::ostringstream oss;
+    oss << std::setw(data.dataparse().begin()->datasize() * 2) << std::setfill('0') << tmpData / data.dataparse().begin()->factor();
+    SIREN_LOG_DEBUG << oss.str();
+    std::deque<std::string> tmpDeq;
+    for (int i = 0; i != oss.str().size(); i += 2) {
+      tmpDeq.emplace_front(oss.str().substr(i, 2));
     }
-    for (auto rit = dataDeq.rbegin(); rit != dataDeq.rend(); rit++) {
-      result.emplace_back(*rit + 0x33);
+    for (auto str : tmpDeq) {
+      result.emplace_back(std::stoi(str, nullptr, 16) + 0x33);
     }
   }
   result.emplace_back(encodeCS(result));
