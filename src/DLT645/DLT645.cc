@@ -247,16 +247,33 @@ std::vector<std::uint8_t> DLT645::encodeSendWriteMeter(Dlt645Proto::Data data) {
   std::vector<std::uint8_t> allZero(8, 0x33);
   result.insert(result.end(), allZero.begin(), allZero.end());
   {
-    // 添加数据
-    auto tmpData = std::stoi(data.dataparse().begin()->datavalue());
-    std::ostringstream oss;
-    oss << std::setw(data.dataparse().begin()->datasize() * 2) << std::setfill('0') << tmpData / data.dataparse().begin()->factor();
-    std::deque<std::string> tmpDeq;
-    for (int i = 0; i != oss.str().size(); i += 2) {
-      tmpDeq.emplace_front(oss.str().substr(i, 2));
-    }
-    for (auto str : tmpDeq) {
-      result.emplace_back(std::stoi(str, nullptr, 16) + 0x33);
+    auto dataParse = data.dataparse().begin();
+    if (dataParse->encodetype() == "BCD") {
+      // 添加数据
+      auto tmpData = std::stoi(data.dataparse().begin()->datavalue());
+      std::ostringstream oss;
+      oss << std::setw(data.dataparse().begin()->datasize() * 2) << std::setfill('0') << tmpData / data.dataparse().begin()->factor();
+      std::deque<std::string> tmpDeq;
+      for (int i = 0; i != oss.str().size(); i += 2) {
+        tmpDeq.emplace_front(oss.str().substr(i, 2));
+      }
+      for (auto str : tmpDeq) {
+        result.emplace_back(std::stoi(str, nullptr, 16) + 0x33);
+      }
+    } else if (dataParse->encodetype() == "BIN") {
+      if (dataParse->datatype() == "string") {
+        // 如果BIN编码为string则将dataValue的值与binName的值匹配，得到set进行发送
+        for (auto bin : dataParse->binlist()) {
+          if (bin.binname() == dataParse->datavalue()) {
+            auto byte = 0;
+            byte |= (1 << bin.set());
+            result.emplace_back(byte + 0x33);
+          }
+        }
+      } else if (dataParse->datatype() == "int") {
+        // 如果BIN编码位int则直接将dataValue的值发送
+        result.emplace_back(std::stoi(dataParse->datavalue()) + 0x33);
+      }
     }
   }
   result.emplace_back(encodeCS(result));
