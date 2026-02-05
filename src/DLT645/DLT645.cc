@@ -110,7 +110,7 @@ Dlt645Proto::DeviceData DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> ro
           } else if (dataParse.datatype() == "string") {
             // 应对BCD编码但是数据类型为string的情况
             // 针对不以ASCII进行编码的string
-            dataValueStr = std::to_string(std::stoi(dataValueStr));
+            dataValueStr = std::to_string(std::stoll(dataValueStr));
             std::ostringstream oss;
             oss << std::setfill('0') << std::setw(dataParse.datasize() * 2) << dataValueStr;
             dataValueStr = oss.str();
