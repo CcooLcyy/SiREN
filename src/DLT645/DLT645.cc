@@ -71,6 +71,13 @@ Dlt645Proto::DeviceData DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> ro
     t_oss << std::hex << std::setw(2) << std::setfill('0') << ((*it - 0x33) & 0xff);
     dataIdentStr += t_oss.str();
   }
+  auto toUpperAscii = [](std::string value) {
+    for (auto &ch : value) {
+      ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+    }
+    return value;
+  };
+  const auto dataIdentUpper = toUpperAscii(dataIdentStr);
   google::protobuf::util::JsonParseOptions option;
   option.ignore_unknown_fields = true;
   auto status = google::protobuf::json::JsonStringToMessage(jsonContext_, &message, option);
@@ -78,7 +85,8 @@ Dlt645Proto::DeviceData DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> ro
     throw std::runtime_error("转换失败: " + status.ToString());
   }
   for (auto &data : *message.mutable_data()) {
-    if (data.blockpoint() == dataIdentStr) {
+    const auto blockPointUpper = toUpperAscii(data.blockpoint());
+    if (blockPointUpper == dataIdentUpper) {
       std::size_t begin = 0;
       std::size_t end = 0;
       for (auto &dataParse : *data.mutable_dataparse()) {
