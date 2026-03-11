@@ -44,24 +44,50 @@ Dlt645Proto::DeviceData DLT645::getDeviceData() {
 }
 Dlt645Proto::DeviceData DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> rowData) {
   Dlt645Proto::DeviceData message;
-  if (rowData.size() == 0) {
+  if (rowData.empty()) {
     return message;
   }
-  if (rowData.front() != 0x68) {
-  }
-  if (rowData.size() < SECOND_START_FLAG)
-    return Dlt645Proto::DeviceData();
-
-  if (rowData.at(SECOND_START_FLAG) != 0x68) {
-  }
-  std::size_t dataSize = rowData.at(DATA_SIZE_POS);
-  std::size_t dataBegin = 7 + diSize_ + 2;
-  if (dataSize < 4) {
+  if (rowData.size() < 12) {
     return Dlt645Proto::DeviceData();
   }
-  std::deque<std::uint8_t> dataIdentDeq = std::deque<std::uint8_t>(rowData.begin() + 10, rowData.begin() + 10 + diSize_);
+  if (rowData.front() != FRAME_HEAD) {
+    return Dlt645Proto::DeviceData();
+  }
+  if (rowData.size() <= SECOND_START_FLAG) {
+    return Dlt645Proto::DeviceData();
+  }
+  if (rowData.at(SECOND_START_FLAG) != FRAME_HEAD) {
+    return Dlt645Proto::DeviceData();
+  }
 
-  std::vector<std::uint8_t> rowDataItem = std::vector<std::uint8_t>(rowData.begin() + 10 + diSize_, rowData.end() - 2);
+  const std::size_t dataSize = rowData.at(DATA_SIZE_POS);
+  const std::size_t frameSize = 12 + dataSize;
+  if (rowData.size() < frameSize) {
+    return Dlt645Proto::DeviceData();
+  }
+  if (rowData[frameSize - 1] != FRAME_END) {
+    return Dlt645Proto::DeviceData();
+  }
+  std::uint8_t cs = 0;
+  for (std::size_t i = 0; i < 10 + dataSize; ++i) {
+    cs += rowData[i];
+  }
+  if (cs != rowData[10 + dataSize]) {
+    return Dlt645Proto::DeviceData();
+  }
+  if (dataSize < diSize_) {
+    return Dlt645Proto::DeviceData();
+  }
+
+  const std::size_t payloadBegin = 10;
+  const std::size_t payloadEnd = payloadBegin + dataSize;
+  if (payloadEnd > rowData.size() - 2) {
+    return Dlt645Proto::DeviceData();
+  }
+
+  std::deque<std::uint8_t> dataIdentDeq = std::deque<std::uint8_t>(rowData.begin() + payloadBegin, rowData.begin() + payloadBegin + diSize_);
+
+  std::vector<std::uint8_t> rowDataItem = std::vector<std::uint8_t>(rowData.begin() + payloadBegin + diSize_, rowData.begin() + payloadEnd);
   for (auto &data : rowDataItem) {
     data -= 0x33;
   }
@@ -92,8 +118,19 @@ Dlt645Proto::DeviceData DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> ro
       for (auto &dataParse : *data.mutable_dataparse()) {
         bool neg{false};
         begin = end;
-        end = dataParse.datasize() + begin;
+        const auto dataParseSize = dataParse.datasize();
+        if (dataParseSize <= 0) {
+          return Dlt645Proto::DeviceData();
+        }
+        const auto chunkSize = static_cast<std::size_t>(dataParseSize);
+        if (begin > rowDataItem.size() || chunkSize > rowDataItem.size() - begin) {
+          return Dlt645Proto::DeviceData();
+        }
+        end = begin + chunkSize;
         std::deque<std::uint8_t> dataDeq = std::deque<std::uint8_t>(rowDataItem.begin() + begin, rowDataItem.begin() + end);
+        if (dataDeq.empty()) {
+          return Dlt645Proto::DeviceData();
+        }
         if (*(dataDeq.end() - 1) & 0x80) {
           auto lastData = *(dataDeq.end() - 1);
           dataDeq.pop_back();
