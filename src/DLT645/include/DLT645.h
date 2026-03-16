@@ -1,11 +1,18 @@
 #pragma once
 
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include <gtest/gtest_prod.h>
 
 #include "DLT645.pb.h"
 
 namespace siren {
 namespace dlt645 {
+struct DataSheetCache;
+
 class DLT645 {
 public:
   DLT645() = delete;
@@ -14,6 +21,7 @@ public:
   ~DLT645();
 
   Dlt645Proto::DeviceData getDeviceData();
+  std::string resolveBlockName(const std::string &model) const;
 
   Dlt645Proto::DeviceData decodeRecvReadMeter(std::vector<std::uint8_t> rowData);
   std::vector<std::uint8_t> encodeSendReadMeter(Dlt645Proto::Data data);
@@ -29,10 +37,19 @@ protected:
   std::uint8_t toBCD(std::uint8_t code);
   std::uint8_t fromBCD(std::uint8_t code);
 
+private:
+  static void clearDataSheetCacheForTest();
+  static std::size_t getDataSheetCacheSizeForTest();
+
+  FRIEND_TEST(TestDLT645, ReusesDataSheetCacheByPath);
+  FRIEND_TEST(TestDLT645, ResolveBlockNameUsesCachedIndex);
+  FRIEND_TEST(TestDLT645, DecodeRecvReadMeterUsesCachedBlockTemplate);
+
   std::size_t diSize_;
   std::size_t dataSize_{0};
-  std::string jsonContext_;
   std::string address_;
+  std::string dataSheetPath_;
+  std::shared_ptr<const DataSheetCache> dataSheetCache_;
 };
 }  // namespace dlt645
 }  // namespace siren

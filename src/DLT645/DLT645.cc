@@ -1,20 +1,18 @@
 #include "DLT645.h"
 
 #include <absl/status/status.h>
-#include <google/protobuf/json/json.h>
 #include <google/protobuf/util/json_util.h>
 
 #include <algorithm>
-#include <boost/json/object.hpp>
-#include <boost/json/parser.hpp>
-#include <boost/json/stream_parser.hpp>
 #include <cctype>
 #include <deque>
 #include <fstream>
 #include <iomanip>
 #include <ios>
+#include <mutex>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 
 #include "CtrlCode.h"
 #include "DLT645.pb.h"
@@ -23,6 +21,37 @@
 
 namespace siren {
 namespace dlt645 {
+namespace {
+
+std::string toUpperAscii(std::string value) {
+  for (auto &ch : value) {
+    ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+  }
+  return value;
+}
+
+std::shared_ptr<const DataSheetCache> loadDataSheetCache(const std::string &dataSheetPath);
+
+std::mutex &dataSheetCacheMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+std::unordered_map<std::string, std::shared_ptr<const DataSheetCache>> &dataSheetCacheMap() {
+  static std::unordered_map<std::string, std::shared_ptr<const DataSheetCache>> cacheMap;
+  return cacheMap;
+}
+
+}  // namespace
+
+struct DataSheetCache {
+  std::string jsonContext;
+  Dlt645Proto::DeviceData deviceTemplate;
+  std::unordered_map<std::string, std::size_t> blockPointToIndex;
+  std::unordered_map<std::string, std::string> modelToBlockName;
+  std::string parseError;
+};
+
 DLT645::DLT645(std::string address, std::string dataSheetPath) {
   diSize_ = DI_SIZE;
   address_ = address;
@@ -31,14 +60,15 @@ DLT645::DLT645(std::string address, std::string dataSheetPath) {
 DLT645::~DLT645() {}
 Dlt645Proto::DeviceData DLT645::getDeviceData() {
   Dlt645Proto::DeviceData result;
-  if (address_ == "") {
+  if (!dataSheetCache_) {
+    return result;
   }
-  google::protobuf::util::JsonParseOptions option;
-  option.ignore_unknown_fields = true;
-  auto status = google::protobuf::util::JsonStringToMessage(jsonContext_, &result, option);
-  if (status != absl::OkStatus()) {
-    SIREN_LOG_ERROR << "dataSheet解析错误: " << status.ToString();
+  if (!dataSheetCache_->parseError.empty()) {
+    SIREN_LOG_ERROR << "dataSheet解析错误: " << dataSheetCache_->parseError;
+    result.set_deviceaddress(address_);
+    return result;
   }
+  result = dataSheetCache_->deviceTemplate;
   result.set_deviceaddress(address_);
   return result;
 }
@@ -97,143 +127,149 @@ Dlt645Proto::DeviceData DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> ro
     t_oss << std::hex << std::setw(2) << std::setfill('0') << ((*it - 0x33) & 0xff);
     dataIdentStr += t_oss.str();
   }
-  auto toUpperAscii = [](std::string value) {
-    for (auto &ch : value) {
-      ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
-    }
-    return value;
-  };
   const auto dataIdentUpper = toUpperAscii(dataIdentStr);
-  google::protobuf::util::JsonParseOptions option;
-  option.ignore_unknown_fields = true;
-  auto status = google::protobuf::json::JsonStringToMessage(jsonContext_, &message, option);
-  if (status != absl::OkStatus()) {
-    throw std::runtime_error("转换失败: " + status.ToString());
+
+  if (!dataSheetCache_) {
+    return Dlt645Proto::DeviceData();
   }
-  for (auto &data : *message.mutable_data()) {
-    const auto blockPointUpper = toUpperAscii(data.blockpoint());
-    if (blockPointUpper == dataIdentUpper) {
-      std::size_t begin = 0;
-      std::size_t end = 0;
-      for (auto &dataParse : *data.mutable_dataparse()) {
-        bool neg{false};
-        begin = end;
-        const auto dataParseSize = dataParse.datasize();
-        if (dataParseSize <= 0) {
-          return Dlt645Proto::DeviceData();
-        }
-        const auto chunkSize = static_cast<std::size_t>(dataParseSize);
-        if (begin > rowDataItem.size() || chunkSize > rowDataItem.size() - begin) {
-          return Dlt645Proto::DeviceData();
-        }
-        end = begin + chunkSize;
-        std::deque<std::uint8_t> dataDeq = std::deque<std::uint8_t>(rowDataItem.begin() + begin, rowDataItem.begin() + end);
-        if (dataDeq.empty()) {
-          return Dlt645Proto::DeviceData();
-        }
-        if (*(dataDeq.end() - 1) & 0x80) {
-          auto lastData = *(dataDeq.end() - 1);
-          dataDeq.pop_back();
-          dataDeq.push_back(lastData ^ 0x80);
-          neg = true;
-        }
-        std::string realData;
-        for (auto rit = dataDeq.rbegin(); rit != dataDeq.rend(); rit++) {
-          std::ostringstream t_oss;
-          t_oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(*rit);
-          realData += t_oss.str();
-        }
-        std::string dataValueStr;
-        if (dataParse.encodetype() == "BCD") {
-          auto dataValue = std::stod(realData) * dataParse.factor();
-          dataValueStr = std::to_string(std::stod(realData) * dataParse.factor());
-          if (neg) {
-            dataValueStr = "-" + dataValueStr;
-          }
-          if (dataParse.datatype() == "int") {
-            dataValueStr = std::to_string(std::stoi(dataValueStr));
-          } else if (dataParse.datatype() == "string") {
-            // 应对BCD编码但是数据类型为string的情况
-            // 针对不以ASCII进行编码的string
-            dataValueStr = std::to_string(std::stoll(dataValueStr));
-            std::ostringstream oss;
-            oss << std::setfill('0') << std::setw(dataParse.datasize() * 2) << dataValueStr;
-            dataValueStr = oss.str();
+  if (!dataSheetCache_->parseError.empty()) {
+    throw std::runtime_error("转换失败: " + dataSheetCache_->parseError);
+  }
 
-            // 当BCD数据类型位string但是dataTranslate位置非空
-            // 表示报文解到的数据需要映射为显示世界的物理量。
-            if (dataParse.datatranslate_size() != 0) {
-              auto dataTranslateIt = std::find_if(dataParse.datatranslate().begin(), dataParse.datatranslate().end(), [&](const auto &elem) {
-                return elem.rowdata() == dataValueStr;
-              });
-              if (dataTranslateIt != dataParse.datatranslate().end()) {
-                dataValueStr = dataTranslateIt->translatedata();
-              }
-            }
-          }
-          dataParse.set_datavalue(dataValueStr);
-        } else if (dataParse.encodetype() == "BIN") {
-          auto binValue = std::stoi(realData, nullptr, 16);
-          for (auto &bin : *dataParse.mutable_binlist()) {
-            // binunion作为合点出现，如果需要多个点表示一个信息在这个项中填写。
-            if (bin.binunion().empty()) {
-              auto mask = (1 << bin.set());
-              if ((binValue & mask) == mask) {
-                bin.set_binvalue("1");
-              } else {
-                bin.set_binvalue("0");
-              }
-            } else {
-              std::uint64_t mask = 0;
-              for (auto unionSet : bin.binunion()) {
-                mask |= (1 << unionSet);
-              }
-            }
-            // 如何bin格式数据类型为string，则将被置位的位名设定为对应的值
-            if (dataParse.datatype() == "string") {
-              for (auto bin : dataParse.binlist()) {
-                if (bin.binvalue() == "1") {
-                  dataParse.set_datavalue(bin.binname());
-                }
-              }
-            } else {
-              dataParse.set_datavalue(bin.binvalue());
-            }
-          }
-        } else if (dataParse.encodetype() == "ASCII") {
-          std::deque<char> realDataDeq;
-          for (int i = 0; i < realData.size(); i += 2) {
-            char c = static_cast<char>(std::stoi(realData.substr(i, 2), nullptr, 16));
-            if (c != '\0') {
-              realDataDeq.emplace_back(c);
-            }
-          }
-          for (auto str : realDataDeq) {
-            dataValueStr += str;
-          }
-          dataParse.set_datavalue(dataValueStr);
-        }
+  const auto blockIndexIt = dataSheetCache_->blockPointToIndex.find(dataIdentUpper);
+  if (blockIndexIt == dataSheetCache_->blockPointToIndex.end()) {
+    return Dlt645Proto::DeviceData();
+  }
 
-        // 处理数据转换的情况（dataTranslate）
+  message.set_devicename(dataSheetCache_->deviceTemplate.devicename());
+  message.set_deviceaddress(dataSheetCache_->deviceTemplate.deviceaddress());
+  auto *data = message.add_data();
+  data->CopyFrom(dataSheetCache_->deviceTemplate.data(static_cast<int>(blockIndexIt->second)));
+
+  std::size_t begin = 0;
+  std::size_t end = 0;
+  for (auto &dataParse : *data->mutable_dataparse()) {
+    bool neg{false};
+    begin = end;
+    const auto dataParseSize = dataParse.datasize();
+    if (dataParseSize <= 0) {
+      return Dlt645Proto::DeviceData();
+    }
+    const auto chunkSize = static_cast<std::size_t>(dataParseSize);
+    if (begin > rowDataItem.size() || chunkSize > rowDataItem.size() - begin) {
+      return Dlt645Proto::DeviceData();
+    }
+    end = begin + chunkSize;
+    std::deque<std::uint8_t> dataDeq = std::deque<std::uint8_t>(rowDataItem.begin() + begin, rowDataItem.begin() + end);
+    if (dataDeq.empty()) {
+      return Dlt645Proto::DeviceData();
+    }
+    if (*(dataDeq.end() - 1) & 0x80) {
+      auto lastData = *(dataDeq.end() - 1);
+      dataDeq.pop_back();
+      dataDeq.push_back(lastData ^ 0x80);
+      neg = true;
+    }
+    std::string realData;
+    for (auto rit = dataDeq.rbegin(); rit != dataDeq.rend(); rit++) {
+      std::ostringstream t_oss;
+      t_oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(*rit);
+      realData += t_oss.str();
+    }
+    std::string dataValueStr;
+    if (dataParse.encodetype() == "BCD") {
+      dataValueStr = std::to_string(std::stod(realData) * dataParse.factor());
+      if (neg) {
+        dataValueStr = "-" + dataValueStr;
+      }
+      if (dataParse.datatype() == "int") {
+        dataValueStr = std::to_string(std::stoi(dataValueStr));
+      } else if (dataParse.datatype() == "string") {
+        // 应对BCD编码但是数据类型为string的情况
+        // 针对不以ASCII进行编码的string
+        dataValueStr = std::to_string(std::stoll(dataValueStr));
+        std::ostringstream oss;
+        oss << std::setfill('0') << std::setw(dataParse.datasize() * 2) << dataValueStr;
+        dataValueStr = oss.str();
+
+        // 当BCD数据类型位string但是dataTranslate位置非空
+        // 表示报文解到的数据需要映射为显示世界的物理量。
         if (dataParse.datatranslate_size() != 0) {
-          for (auto datatranslate : dataParse.datatranslate()) {
-            if (dataParse.datavalue() == datatranslate.rowdata()) {
-              dataParse.set_datavalue(datatranslate.translatedata());
+          auto dataTranslateIt = std::find_if(dataParse.datatranslate().begin(), dataParse.datatranslate().end(), [&](const auto &elem) {
+            return elem.rowdata() == dataValueStr;
+          });
+          if (dataTranslateIt != dataParse.datatranslate().end()) {
+            dataValueStr = dataTranslateIt->translatedata();
+          }
+        }
+      }
+      dataParse.set_datavalue(dataValueStr);
+    } else if (dataParse.encodetype() == "BIN") {
+      auto binValue = std::stoi(realData, nullptr, 16);
+      for (auto &bin : *dataParse.mutable_binlist()) {
+        // binunion作为合点出现，如果需要多个点表示一个信息在这个项中填写。
+        if (bin.binunion().empty()) {
+          auto mask = (1 << bin.set());
+          if ((binValue & mask) == mask) {
+            bin.set_binvalue("1");
+          } else {
+            bin.set_binvalue("0");
+          }
+        } else {
+          std::uint64_t mask = 0;
+          for (auto unionSet : bin.binunion()) {
+            mask |= (1 << unionSet);
+          }
+        }
+        // 如何bin格式数据类型为string，则将被置位的位名设定为对应的值
+        if (dataParse.datatype() == "string") {
+          for (auto bin : dataParse.binlist()) {
+            if (bin.binvalue() == "1") {
+              dataParse.set_datavalue(bin.binname());
             }
           }
+        } else {
+          dataParse.set_datavalue(bin.binvalue());
+        }
+      }
+    } else if (dataParse.encodetype() == "ASCII") {
+      std::deque<char> realDataDeq;
+      for (int i = 0; i < static_cast<int>(realData.size()); i += 2) {
+        char c = static_cast<char>(std::stoi(realData.substr(i, 2), nullptr, 16));
+        if (c != '\0') {
+          realDataDeq.emplace_back(c);
+        }
+      }
+      for (auto str : realDataDeq) {
+        dataValueStr += str;
+      }
+      dataParse.set_datavalue(dataValueStr);
+    }
+
+    // 处理数据转换的情况（dataTranslate）
+    if (dataParse.datatranslate_size() != 0) {
+      for (auto datatranslate : dataParse.datatranslate()) {
+        if (dataParse.datavalue() == datatranslate.rowdata()) {
+          dataParse.set_datavalue(datatranslate.translatedata());
         }
       }
     }
   }
   return message;
 }
-void DLT645::getDataSheet(std::string dataSheetPath) {
-  std::ifstream dataSheetFile(dataSheetPath);
-  if (!dataSheetFile.is_open()) {
-    throw std::runtime_error("打开数据解析列表失败");
+std::string DLT645::resolveBlockName(const std::string &model) const {
+  if (!dataSheetCache_) {
+    return model;
   }
-  jsonContext_ = std::string((std::istreambuf_iterator<char>(dataSheetFile)), std::istreambuf_iterator<char>());
-  dataSheetFile.close();
+  const auto it = dataSheetCache_->modelToBlockName.find(model);
+  if (it == dataSheetCache_->modelToBlockName.end()) {
+    return model;
+  }
+  return it->second;
+}
+void DLT645::getDataSheet(std::string dataSheetPath) {
+  dataSheetPath_ = std::move(dataSheetPath);
+  dataSheetCache_ = loadDataSheetCache(dataSheetPath_);
 }
 std::vector<std::uint8_t> DLT645::encodeSendReadMeter(Dlt645Proto::Data data) {
   if (address_ == "") {
@@ -392,5 +428,71 @@ std::uint8_t DLT645::fromBCD(std::uint8_t code) {
 const std::vector<std::uint8_t> DLT645::extractDlt645Message(std::vector<std::uint8_t> rowData) {
   return std::vector<std::uint8_t>();
 }
+
+void DLT645::clearDataSheetCacheForTest() {
+  std::lock_guard<std::mutex> lock(dataSheetCacheMutex());
+  dataSheetCacheMap().clear();
+}
+
+std::size_t DLT645::getDataSheetCacheSizeForTest() {
+  std::lock_guard<std::mutex> lock(dataSheetCacheMutex());
+  return dataSheetCacheMap().size();
+}
+
+namespace {
+
+std::shared_ptr<const DataSheetCache> buildDataSheetCache(const std::string &dataSheetPath) {
+  std::ifstream dataSheetFile(dataSheetPath);
+  if (!dataSheetFile.is_open()) {
+    throw std::runtime_error("打开数据解析列表失败");
+  }
+
+  auto cache = std::make_shared<DataSheetCache>();
+  cache->jsonContext = std::string((std::istreambuf_iterator<char>(dataSheetFile)), std::istreambuf_iterator<char>());
+  dataSheetFile.close();
+
+  google::protobuf::util::JsonParseOptions option;
+  option.ignore_unknown_fields = true;
+  const auto status = google::protobuf::util::JsonStringToMessage(cache->jsonContext, &cache->deviceTemplate, option);
+  if (status != absl::OkStatus()) {
+    cache->parseError = status.ToString();
+    return cache;
+  }
+
+  for (int i = 0; i < cache->deviceTemplate.data_size(); ++i) {
+    const auto &data = cache->deviceTemplate.data(i);
+    const auto blockPointUpper = toUpperAscii(data.blockpoint());
+    cache->blockPointToIndex.try_emplace(blockPointUpper, static_cast<std::size_t>(i));
+
+    if (!data.blockname().empty()) {
+      for (const auto &dataParse : data.dataparse()) {
+        if (!dataParse.name().empty()) {
+          cache->modelToBlockName.try_emplace(dataParse.name(), data.blockname());
+        }
+        for (const auto &bin : dataParse.binlist()) {
+          if (!bin.binname().empty()) {
+            cache->modelToBlockName.try_emplace(bin.binname(), data.blockname());
+          }
+        }
+      }
+    }
+  }
+  return cache;
+}
+
+std::shared_ptr<const DataSheetCache> loadDataSheetCache(const std::string &dataSheetPath) {
+  std::lock_guard<std::mutex> lock(dataSheetCacheMutex());
+  auto &cacheMap = dataSheetCacheMap();
+  const auto cacheIt = cacheMap.find(dataSheetPath);
+  if (cacheIt != cacheMap.end()) {
+    return cacheIt->second;
+  }
+
+  auto cache = buildDataSheetCache(dataSheetPath);
+  cacheMap.emplace(dataSheetPath, cache);
+  return cache;
+}
+
+}  // namespace
 }  // namespace dlt645
 }  // namespace siren
