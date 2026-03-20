@@ -22,6 +22,7 @@ public:
 
   Dlt645Proto::DeviceData getDeviceData();
   std::string resolveBlockName(const std::string &model) const;
+  const std::string &lastDecodeError() const;
 
   Dlt645Proto::DeviceData decodeRecvReadMeter(std::vector<std::uint8_t> rowData);
   std::vector<std::uint8_t> encodeSendReadMeter(Dlt645Proto::Data data);
@@ -44,12 +45,14 @@ private:
   FRIEND_TEST(TestDLT645, ReusesDataSheetCacheByPath);
   FRIEND_TEST(TestDLT645, ResolveBlockNameUsesCachedIndex);
   FRIEND_TEST(TestDLT645, DecodeRecvReadMeterUsesCachedBlockTemplate);
+  FRIEND_TEST(TestDLT645, DecodeRecvReadMeterRecordsFailureReason);
 
   std::size_t diSize_;
   std::size_t dataSize_{0};
   std::string address_;
   std::string dataSheetPath_;
   std::shared_ptr<const DataSheetCache> dataSheetCache_;
+  std::string lastDecodeError_;
 };
 }  // namespace dlt645
 }  // namespace siren

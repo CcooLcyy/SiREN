@@ -13,6 +13,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 #include "CtrlCode.h"
 #include "DLT645.pb.h"
@@ -72,47 +73,56 @@ Dlt645Proto::DeviceData DLT645::getDeviceData() {
   result.set_deviceaddress(address_);
   return result;
 }
+const std::string &DLT645::lastDecodeError() const {
+  return lastDecodeError_;
+}
 Dlt645Proto::DeviceData DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> rowData) {
+  auto fail = [this](std::string reason) {
+    lastDecodeError_ = std::move(reason);
+    return Dlt645Proto::DeviceData();
+  };
+
+  lastDecodeError_.clear();
   Dlt645Proto::DeviceData message;
   if (rowData.empty()) {
-    return message;
+    return fail("空报文");
   }
   if (rowData.size() < 12) {
-    return Dlt645Proto::DeviceData();
+    return fail("报文长度不足12字节");
   }
   if (rowData.front() != FRAME_HEAD) {
-    return Dlt645Proto::DeviceData();
+    return fail("首字节不是0x68");
   }
   if (rowData.size() <= SECOND_START_FLAG) {
-    return Dlt645Proto::DeviceData();
+    return fail("缺少第二个起始符");
   }
   if (rowData.at(SECOND_START_FLAG) != FRAME_HEAD) {
-    return Dlt645Proto::DeviceData();
+    return fail("第二个起始符不是0x68");
   }
 
   const std::size_t dataSize = rowData.at(DATA_SIZE_POS);
   const std::size_t frameSize = 12 + dataSize;
   if (rowData.size() < frameSize) {
-    return Dlt645Proto::DeviceData();
+    return fail("报文长度小于长度字段声明值");
   }
   if (rowData[frameSize - 1] != FRAME_END) {
-    return Dlt645Proto::DeviceData();
+    return fail("结束符不是0x16");
   }
   std::uint8_t cs = 0;
   for (std::size_t i = 0; i < 10 + dataSize; ++i) {
     cs += rowData[i];
   }
   if (cs != rowData[10 + dataSize]) {
-    return Dlt645Proto::DeviceData();
+    return fail("校验和错误");
   }
   if (dataSize < diSize_) {
-    return Dlt645Proto::DeviceData();
+    return fail("数据域长度小于DI长度");
   }
 
   const std::size_t payloadBegin = 10;
   const std::size_t payloadEnd = payloadBegin + dataSize;
   if (payloadEnd > rowData.size() - 2) {
-    return Dlt645Proto::DeviceData();
+    return fail("数据域越界");
   }
 
   std::deque<std::uint8_t> dataIdentDeq = std::deque<std::uint8_t>(rowData.begin() + payloadBegin, rowData.begin() + payloadBegin + diSize_);
@@ -130,15 +140,16 @@ Dlt645Proto::DeviceData DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> ro
   const auto dataIdentUpper = toUpperAscii(dataIdentStr);
 
   if (!dataSheetCache_) {
-    return Dlt645Proto::DeviceData();
+    return fail("datasheet缓存未初始化");
   }
   if (!dataSheetCache_->parseError.empty()) {
+    lastDecodeError_ = "datasheet解析错误: " + dataSheetCache_->parseError;
     throw std::runtime_error("转换失败: " + dataSheetCache_->parseError);
   }
 
   const auto blockIndexIt = dataSheetCache_->blockPointToIndex.find(dataIdentUpper);
   if (blockIndexIt == dataSheetCache_->blockPointToIndex.end()) {
-    return Dlt645Proto::DeviceData();
+    return fail("未找到blockPoint=" + dataIdentUpper + "的点表定义");
   }
 
   message.set_devicename(dataSheetCache_->deviceTemplate.devicename());
@@ -153,16 +164,17 @@ Dlt645Proto::DeviceData DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> ro
     begin = end;
     const auto dataParseSize = dataParse.datasize();
     if (dataParseSize <= 0) {
-      return Dlt645Proto::DeviceData();
+      return fail("点表dataSize非法: name=" + dataParse.name());
     }
     const auto chunkSize = static_cast<std::size_t>(dataParseSize);
     if (begin > rowDataItem.size() || chunkSize > rowDataItem.size() - begin) {
-      return Dlt645Proto::DeviceData();
+      return fail("数据长度不足: name=" + dataParse.name() + ", need=" + std::to_string(chunkSize) +
+                  ", remain=" + std::to_string(begin > rowDataItem.size() ? 0 : rowDataItem.size() - begin));
     }
     end = begin + chunkSize;
     std::deque<std::uint8_t> dataDeq = std::deque<std::uint8_t>(rowDataItem.begin() + begin, rowDataItem.begin() + end);
     if (dataDeq.empty()) {
-      return Dlt645Proto::DeviceData();
+      return fail("切片后数据为空: name=" + dataParse.name());
     }
     if (*(dataDeq.end() - 1) & 0x80) {
       auto lastData = *(dataDeq.end() - 1);

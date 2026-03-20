@@ -149,5 +149,18 @@ TEST(TestDLT645, DecodeRecvReadMeterUsesCachedBlockTemplate) {
   EXPECT_NEAR(std::stod(parsed.data(0).dataparse(0).datavalue()), 123.4, 1e-6);
 }
 
+TEST(TestDLT645, DecodeRecvReadMeterRecordsFailureReason) {
+  DLT645::clearDataSheetCacheForTest();
+  DataSheetFileGuard dataSheetPath(makeTempDataSheetPath("dlt645_decode_reason_test.json"));
+  writeDataSheet(dataSheetPath.path(), "DeviceAlpha");
+
+  DLT645 dlt645("001122334455", dataSheetPath.path().string());
+  const auto frame = makeReadReplyFrame("04030201", {0x34});
+  const auto parsed = dlt645.decodeRecvReadMeter(frame);
+
+  EXPECT_EQ(parsed.data_size(), 0);
+  EXPECT_EQ(dlt645.lastDecodeError(), "数据长度不足: name=ModelA, need=2, remain=1");
+}
+
 }  // namespace dlt645
 }  // namespace siren
