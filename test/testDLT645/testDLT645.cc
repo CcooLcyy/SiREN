@@ -1,10 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <vector>
-#include <deque>
 
 #include "DLT645.h"
 
@@ -50,6 +50,42 @@ void writeDataSheet(const std::filesystem::path &path, const std::string &device
          "            {\"set\": 0, \"binName\": \"SwitchOn\"},\n"
          "            {\"set\": 1, \"binName\": \"SwitchOff\"}\n"
          "          ]\n"
+         "        }\n"
+         "      ]\n"
+         "    }\n"
+         "  ]\n"
+         "}\n";
+}
+
+void writeBcdSignDataSheet(const std::filesystem::path &path) {
+  std::ofstream ofs(path);
+  ofs << "{\n"
+         "  \"deviceName\": \"DeviceAlpha\",\n"
+         "  \"data\": [\n"
+         "    {\n"
+         "      \"blockName\": \"BLK_UNSIGNED\",\n"
+         "      \"blockPoint\": \"020A01FF\",\n"
+         "      \"dataParse\": [\n"
+         "        {\n"
+         "          \"name\": \"UnsignedHarmonic\",\n"
+         "          \"dataSize\": 2,\n"
+         "          \"factor\": 0.01,\n"
+         "          \"encodeType\": \"BCD\",\n"
+         "          \"dataType\": \"double\"\n"
+         "        }\n"
+         "      ]\n"
+         "    },\n"
+         "    {\n"
+         "      \"blockName\": \"BLK_SIGNED\",\n"
+         "      \"blockPoint\": \"02030000\",\n"
+         "      \"dataParse\": [\n"
+         "        {\n"
+         "          \"name\": \"SignedPower\",\n"
+         "          \"dataSize\": 2,\n"
+         "          \"factor\": 0.01,\n"
+         "          \"encodeType\": \"BCD\",\n"
+         "          \"dataType\": \"double\",\n"
+         "          \"bcdMsbSign\": true\n"
          "        }\n"
          "      ]\n"
          "    }\n"
@@ -149,6 +185,36 @@ TEST(TestDLT645, DecodeRecvReadMeterUsesCachedBlockTemplate) {
   EXPECT_NEAR(std::stod(parsed.data(0).dataparse(0).datavalue()), 123.4, 1e-6);
 }
 
+TEST(TestDLT645, DecodeRecvReadMeterTreatsBcdAsUnsignedByDefault) {
+  DLT645::clearDataSheetCacheForTest();
+  DataSheetFileGuard dataSheetPath(makeTempDataSheetPath("dlt645_bcd_unsigned_test.json"));
+  writeBcdSignDataSheet(dataSheetPath.path());
+
+  DLT645 dlt645("001122334455", dataSheetPath.path().string());
+  const auto frame = makeReadReplyFrame("020A01FF", {0x00, 0x82});
+  const auto parsed = dlt645.decodeRecvReadMeter(frame);
+
+  ASSERT_EQ(parsed.data_size(), 1);
+  ASSERT_EQ(parsed.data(0).dataparse_size(), 1);
+  EXPECT_EQ(parsed.data(0).dataparse(0).name(), "UnsignedHarmonic");
+  EXPECT_NEAR(std::stod(parsed.data(0).dataparse(0).datavalue()), 82.0, 1e-6);
+}
+
+TEST(TestDLT645, DecodeRecvReadMeterUsesBcdMsbSignWhenConfigured) {
+  DLT645::clearDataSheetCacheForTest();
+  DataSheetFileGuard dataSheetPath(makeTempDataSheetPath("dlt645_bcd_signed_test.json"));
+  writeBcdSignDataSheet(dataSheetPath.path());
+
+  DLT645 dlt645("001122334455", dataSheetPath.path().string());
+  const auto frame = makeReadReplyFrame("02030000", {0x00, 0x82});
+  const auto parsed = dlt645.decodeRecvReadMeter(frame);
+
+  ASSERT_EQ(parsed.data_size(), 1);
+  ASSERT_EQ(parsed.data(0).dataparse_size(), 1);
+  EXPECT_EQ(parsed.data(0).dataparse(0).name(), "SignedPower");
+  EXPECT_NEAR(std::stod(parsed.data(0).dataparse(0).datavalue()), -2.0, 1e-6);
+}
+
 TEST(TestDLT645, DecodeRecvReadMeterRecordsFailureReason) {
   DLT645::clearDataSheetCacheForTest();
   DataSheetFileGuard dataSheetPath(makeTempDataSheetPath("dlt645_decode_reason_test.json"));
@@ -160,6 +226,43 @@ TEST(TestDLT645, DecodeRecvReadMeterRecordsFailureReason) {
 
   EXPECT_EQ(parsed.data_size(), 0);
   EXPECT_EQ(dlt645.lastDecodeError(), "数据长度不足: name=ModelA, need=2, remain=1");
+}
+
+TEST(TestDLT645, EncodeSendWriteMeterKeepsBcdDecimalValue) {
+  DLT645::clearDataSheetCacheForTest();
+  DataSheetFileGuard dataSheetPath(makeTempDataSheetPath("dlt645_bcd_write_decimal_test.json"));
+  writeDataSheet(dataSheetPath.path(), "DeviceAlpha");
+
+  DLT645 dlt645("000000000001", dataSheetPath.path().string());
+  auto data = dlt645.getDeviceData().data(0);
+  data.mutable_dataparse()->begin()->set_datavalue("342.2");
+
+  const auto frame = dlt645.encodeSendWriteMeter(data);
+
+  ASSERT_EQ(frame.size(), 26U);
+  EXPECT_EQ(frame[22], 0x55);
+  EXPECT_EQ(frame[23], 0x67);
+  std::uint8_t cs = 0;
+  for (auto it = frame.begin(); it != frame.end() - 2; ++it) {
+    cs += *it;
+  }
+  EXPECT_EQ(frame[24], cs);
+  EXPECT_EQ(frame[25], 0x16);
+}
+
+TEST(TestDLT645, EncodeSendWriteMeterRejectsBcdOverflowWithoutThrowing) {
+  DLT645::clearDataSheetCacheForTest();
+  DataSheetFileGuard dataSheetPath(makeTempDataSheetPath("dlt645_bcd_write_overflow_test.json"));
+  writeDataSheet(dataSheetPath.path(), "DeviceAlpha");
+
+  DLT645 dlt645("000000000001", dataSheetPath.path().string());
+  auto data = dlt645.getDeviceData().data(0);
+  data.mutable_dataparse()->begin()->set_datavalue("3442");
+
+  std::vector<std::uint8_t> frame;
+  EXPECT_NO_THROW(frame = dlt645.encodeSendWriteMeter(data));
+  EXPECT_TRUE(frame.empty());
+  EXPECT_NE(dlt645.lastDecodeError().find("BCD编码超出点表长度"), std::string::npos);
 }
 
 }  // namespace dlt645

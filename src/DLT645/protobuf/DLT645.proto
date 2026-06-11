@@ -27,6 +27,7 @@ message DataParse {
   string                 dataType      = 9; // 数据类型
   repeated BinList       binList       = 10; // bin格式对应位解析列表
   repeated DataTranslate dataTranslate = 11; // 回复不同数据需要进行转换时
+  bool                   bcdMsbSign    = 12; // BCD最高有效字节bit7是否为符号位
 }
 
 message Data {

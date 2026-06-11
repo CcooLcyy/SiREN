@@ -1,11 +1,11 @@
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
-
-#include <gtest/gtest_prod.h>
 
 #include "DLT645.pb.h"
 
@@ -45,7 +45,11 @@ private:
   FRIEND_TEST(TestDLT645, ReusesDataSheetCacheByPath);
   FRIEND_TEST(TestDLT645, ResolveBlockNameUsesCachedIndex);
   FRIEND_TEST(TestDLT645, DecodeRecvReadMeterUsesCachedBlockTemplate);
+  FRIEND_TEST(TestDLT645, DecodeRecvReadMeterTreatsBcdAsUnsignedByDefault);
+  FRIEND_TEST(TestDLT645, DecodeRecvReadMeterUsesBcdMsbSignWhenConfigured);
   FRIEND_TEST(TestDLT645, DecodeRecvReadMeterRecordsFailureReason);
+  FRIEND_TEST(TestDLT645, EncodeSendWriteMeterKeepsBcdDecimalValue);
+  FRIEND_TEST(TestDLT645, EncodeSendWriteMeterRejectsBcdOverflowWithoutThrowing);
 
   std::size_t diSize_;
   std::size_t dataSize_{0};

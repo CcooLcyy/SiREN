@@ -5,10 +5,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <deque>
 #include <fstream>
 #include <iomanip>
 #include <ios>
+#include <limits>
 #include <mutex>
 #include <sstream>
 #include <string>
@@ -32,6 +34,70 @@ std::string toUpperAscii(std::string value) {
 }
 
 std::shared_ptr<const DataSheetCache> loadDataSheetCache(const std::string &dataSheetPath);
+
+bool hasOnlyTrailingWhitespace(const std::string &text, std::size_t pos) {
+  for (; pos < text.size(); ++pos) {
+    if (!std::isspace(static_cast<unsigned char>(text[pos]))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::vector<std::uint8_t> encodeScaledBcdDataBytes(const Dlt645Proto::DataParse &dataParse, std::string &error) {
+  error.clear();
+  if (dataParse.datasize() <= 0) {
+    error = "BCD编码dataSize非法: name=" + dataParse.name();
+    return {};
+  }
+  const auto dataSize = static_cast<std::size_t>(dataParse.datasize());
+  if (dataSize > std::numeric_limits<std::size_t>::max() / 2) {
+    error = "BCD编码dataSize过大: name=" + dataParse.name();
+    return {};
+  }
+
+  const auto factor = dataParse.factor();
+  if (!std::isfinite(factor) || factor <= 0.0) {
+    error = "BCD编码factor非法: name=" + dataParse.name();
+    return {};
+  }
+
+  double value = 0.0;
+  std::size_t parsedSize = 0;
+  try {
+    value = std::stod(dataParse.datavalue(), &parsedSize);
+  } catch (const std::exception &e) {
+    error = "BCD编码值非法: name=" + dataParse.name() + ", value=" + dataParse.datavalue() + ", reason=" + e.what();
+    return {};
+  }
+  if (!hasOnlyTrailingWhitespace(dataParse.datavalue(), parsedSize) || !std::isfinite(value)) {
+    error = "BCD编码值非法: name=" + dataParse.name() + ", value=" + dataParse.datavalue();
+    return {};
+  }
+
+  const double scaledDouble = value / factor;
+  if (!std::isfinite(scaledDouble) || scaledDouble < 0.0 || scaledDouble > static_cast<double>(std::numeric_limits<std::int64_t>::max())) {
+    error = "BCD编码缩放后值非法: name=" + dataParse.name() + ", value=" + dataParse.datavalue();
+    return {};
+  }
+  const auto scaled = static_cast<std::int64_t>(std::llround(scaledDouble));
+  const std::string scaledText = std::to_string(scaled);
+  const std::size_t capacityDigits = dataSize * 2;
+  if (scaledText.size() > capacityDigits) {
+    error = "BCD编码超出点表长度: name=" + dataParse.name() + ", value=" + dataParse.datavalue() + ", scaled=" + scaledText + ", digits=" + std::to_string(scaledText.size()) + ", capacity=" + std::to_string(capacityDigits);
+    return {};
+  }
+
+  std::string bcdDigits(capacityDigits - scaledText.size(), '0');
+  bcdDigits += scaledText;
+  std::deque<std::uint8_t> dataBytes;
+  for (std::size_t i = 0; i < bcdDigits.size(); i += 2) {
+    const auto high = static_cast<std::uint8_t>(bcdDigits[i] - '0');
+    const auto low = static_cast<std::uint8_t>(bcdDigits[i + 1] - '0');
+    dataBytes.emplace_front(static_cast<std::uint8_t>(((high << 4) | low) + 0x33));
+  }
+  return {dataBytes.begin(), dataBytes.end()};
+}
 
 std::mutex &dataSheetCacheMutex() {
   static std::mutex mutex;
@@ -168,18 +234,17 @@ Dlt645Proto::DeviceData DLT645::decodeRecvReadMeter(std::vector<std::uint8_t> ro
     }
     const auto chunkSize = static_cast<std::size_t>(dataParseSize);
     if (begin > rowDataItem.size() || chunkSize > rowDataItem.size() - begin) {
-      return fail("数据长度不足: name=" + dataParse.name() + ", need=" + std::to_string(chunkSize) +
-                  ", remain=" + std::to_string(begin > rowDataItem.size() ? 0 : rowDataItem.size() - begin));
+      return fail("数据长度不足: name=" + dataParse.name() + ", need=" + std::to_string(chunkSize) + ", remain=" + std::to_string(begin > rowDataItem.size() ? 0 : rowDataItem.size() - begin));
     }
     end = begin + chunkSize;
     std::deque<std::uint8_t> dataDeq = std::deque<std::uint8_t>(rowDataItem.begin() + begin, rowDataItem.begin() + end);
     if (dataDeq.empty()) {
       return fail("切片后数据为空: name=" + dataParse.name());
     }
-    if (*(dataDeq.end() - 1) & 0x80) {
+    if (dataParse.encodetype() == "BCD" && dataParse.bcdmsbsign() && (*(dataDeq.end() - 1) & 0x80)) {
       auto lastData = *(dataDeq.end() - 1);
       dataDeq.pop_back();
-      dataDeq.push_back(lastData ^ 0x80);
+      dataDeq.push_back(lastData & 0x7f);
       neg = true;
     }
     std::string realData;
@@ -342,17 +407,14 @@ std::vector<std::uint8_t> DLT645::encodeSendWriteMeter(Dlt645Proto::Data data) {
   {
     auto dataParse = data.dataparse().begin();
     if (dataParse->encodetype() == "BCD") {
-      // 添加数据
-      auto tmpData = std::stoi(data.dataparse().begin()->datavalue());
-      std::ostringstream oss;
-      oss << std::setw(data.dataparse().begin()->datasize() * 2) << std::setfill('0') << tmpData / data.dataparse().begin()->factor();
-      std::deque<std::string> tmpDeq;
-      for (int i = 0; i != oss.str().size(); i += 2) {
-        tmpDeq.emplace_front(oss.str().substr(i, 2));
+      std::string encodeError;
+      const auto dataBytes = encodeScaledBcdDataBytes(*dataParse, encodeError);
+      if (!encodeError.empty()) {
+        lastDecodeError_ = encodeError;
+        SIREN_LOG_ERROR << encodeError;
+        return {};
       }
-      for (auto str : tmpDeq) {
-        result.emplace_back(std::stoi(str, nullptr, 16) + 0x33);
-      }
+      result.insert(result.end(), dataBytes.begin(), dataBytes.end());
     } else if (dataParse->encodetype() == "BIN") {
       if (dataParse->datatype() == "string") {
         // 如果BIN编码为string则将dataValue的值与binName的值匹配，得到set进行发送
@@ -405,16 +467,15 @@ std::vector<std::uint8_t> DLT645::encodeSendCtrlMeter(Dlt645Proto::Data data) {
   result.insert(result.end(), allZero.begin(), allZero.end());
   {
     // 添加数据
-    auto tmpData = std::stoi(data.dataparse().begin()->datavalue());
-    std::ostringstream oss;
-    oss << std::setw(data.dataparse().begin()->datasize() * 2) << std::setfill('0') << tmpData / data.dataparse().begin()->factor();
-    std::deque<std::string> tmpDeq;
-    for (int i = 0; i != oss.str().size(); i += 2) {
-      tmpDeq.emplace_front(oss.str().substr(i, 2));
+    auto dataParse = data.dataparse().begin();
+    std::string encodeError;
+    const auto dataBytes = encodeScaledBcdDataBytes(*dataParse, encodeError);
+    if (!encodeError.empty()) {
+      lastDecodeError_ = encodeError;
+      SIREN_LOG_ERROR << encodeError;
+      return {};
     }
-    for (auto str : tmpDeq) {
-      result.emplace_back(std::stoi(str, nullptr, 16) + 0x33);
-    }
+    result.insert(result.end(), dataBytes.begin(), dataBytes.end());
   }
   result.emplace_back(encodeCS(result));
   result.emplace_back(FRAME_END);
